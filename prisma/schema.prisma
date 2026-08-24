@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MatchType{
+  exact 
+  fuzzy
+  ai_suggested
+  manual
+}
+
+enum MatchStatus{
+  auto_approved
+  pending_review
+  approved
+  rejected
+}
+
+enum UserRole{
+  admin
+  analyst
+  viewer
+}
+
+model BankTransaction {
+  id           String   @id @default(uuid())
+  accountId    String
+  date         String
+  amountCents  Int
+  memo         String
+  sourceFormat String
+  createdAt    DateTime @default(now())
+
+  matches Match[]
+  agentTraces  AgentTrace[]
+}
+
+model GLEntry {
+  id          String   @id @default(uuid())
+  fundId      String
+  accountCode String
+  amountCents Int
+  date        String
+  description String
+  createdAt   DateTime @default(now())
+
+  matches Match[]
+}
+
+model Match {
+  id                String      @id @default(uuid())
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  glEntryId         String?
+  glEntry           GLEntry?    @relation(fields: [glEntryId], references: [id])
+  matchType         MatchType
+  confidenceScore   Float?
+  status            MatchStatus
+  reviewedByUserId  String?
+  reviewedBy        User?       @relation(fields: [reviewedByUserId], references: [id])
+  reviewedAt        DateTime?
+  createdAt         DateTime    @default(now())
+}
+
+model AuditLogEntry {
+  id          String   @id @default(uuid())
+  entityType  String
+  entityId    String
+  action      String
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+  beforeState Json?
+  afterState  Json?
+  timestamp   DateTime @default(now())
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+
+  reviewedMatches Match[]
+  auditActions    AuditLogEntry[]
+}
+
+model AgentTrace {
+  id                 String   @id @default(uuid())
+  bankTransactionId  String
+  bankTransaction    BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  toolCalls          Json
+  finalAction        String
+  finalReasoning     String?
+  proposedGlEntryId  String?
+  proposedConfidence Float?
+  matchId            String?
+  createdAt          DateTime @default(now())
+}
