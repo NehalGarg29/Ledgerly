@@ -2,19 +2,13 @@ import Link from "next/link";
 import { getDashboardStats } from "../lib/dashboardStats";
 import { getAnalyticsStats } from "../lib/analyticsStats";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
+import { formatCents } from "../lib/format";
 
 // This page reads live data straight from Postgres on every load. Without
 // this, Next.js statically prerenders it at build time and would serve a
 // frozen snapshot of whatever the database looked like when you last ran
 // `next build`, not the actual current numbers.
 export const dynamic = "force-dynamic";
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
 
 type Card = {
   label: string;
@@ -35,12 +29,14 @@ export default async function Dashboard() {
     {
       label: "Total Cash",
       value: formatCents(stats.totalCashCents),
+      href: "#accounts",
       accent: "text-emerald-600",
     },
     {
       label: "Reconciliation Rate",
       value: `${reconciliationPct.toFixed(1)}%`,
       sub: `${stats.reconciledCount} of ${stats.totalTransactions} transactions`,
+      href: "/transactions",
       accent: "text-emerald-600",
       progress: reconciliationPct,
     },
@@ -53,6 +49,7 @@ export default async function Dashboard() {
     {
       label: "Connected Accounts",
       value: stats.connectedAccountsCount.toString(),
+      href: "#accounts",
       accent: "text-zinc-900",
     },
   ];
@@ -93,7 +90,7 @@ export default async function Dashboard() {
         })}
       </div>
 
-      <div className="mt-8">
+      <div id="accounts" className="mt-8 scroll-mt-24">
         <h2 className="text-sm font-semibold text-zinc-900">Accounts</h2>
         <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
           <table className="w-full min-w-[420px] text-sm">

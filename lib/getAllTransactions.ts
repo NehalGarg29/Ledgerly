@@ -19,11 +19,17 @@ export async function getAllTransactions() {
       amountCents: txn.amountCents,
       memo: txn.memo,
       sourceFormat: txn.sourceFormat,
+      createdAt: txn.createdAt.toISOString(),
       status: match ? match.status : "unmatched",
+      matchType: match ? match.matchType : null,
       confidenceScore: match ? match.confidenceScore : null,
       glEntry: match?.glEntry
         ? {
+            id: match.glEntry.id,
+            fundId: match.glEntry.fundId,
             accountCode: match.glEntry.accountCode,
+            amountCents: match.glEntry.amountCents,
+            date: match.glEntry.date,
             description: match.glEntry.description,
           }
         : null,

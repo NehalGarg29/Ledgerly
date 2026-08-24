@@ -52,6 +52,7 @@ model GLEntry {
   amountCents Int
   date        String
   description String
+  source      String   @default("upload") // "upload" (from a file) or "manual" (keyed in by a reviewer)
   createdAt   DateTime @default(now())
 
   matches Match[]
