@@ -77,6 +77,7 @@ export function ManualMatchPanel({
   }
 
   async function matchTo(glEntryId: string, pendingKey: string) {
+    if (!window.confirm("Match this transaction to this GL entry? This can't be undone.")) return;
     setPending(pendingKey);
     setError("");
     try {
@@ -97,6 +98,7 @@ export function ManualMatchPanel({
   }
 
   async function handleReject() {
+    if (!window.confirm("Mark this transaction as unmatched? This can't be undone.")) return;
     setPending("reject");
     setError("");
     try {
@@ -125,6 +127,9 @@ export function ManualMatchPanel({
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(addForm.date)) {
       setError("Date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!window.confirm("Create this GL entry and match it to the transaction? This can't be undone.")) {
       return;
     }
 

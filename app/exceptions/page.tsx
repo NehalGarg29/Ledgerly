@@ -79,6 +79,13 @@ export default function ExceptionsPage() {
   }, []);
 
   async function handleReview(exception: Exception, action: "approve" | "reject") {
+    if (
+      !window.confirm(
+        `${action === "approve" ? "Approve" : "Reject"} this match? This can't be undone.`
+      )
+    ) {
+      return;
+    }
     setPendingRowId(exception.id);
     setRowError((prev) => ({ ...prev, [exception.id]: "" }));
 

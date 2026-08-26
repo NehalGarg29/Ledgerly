@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/transactions", label: "Transactions" },
   { href: "/exceptions", label: "Exceptions" },
+  { href: "/audit-log", label: "Audit log" },
   { href: "/upload", label: "Upload" },
 ];
 
