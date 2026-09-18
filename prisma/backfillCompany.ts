@@ -29,34 +29,38 @@ async function main() {
 
   const companyId = company.id;
 
-  const results = await prisma.$transaction([
-    prisma.user.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.bankTransaction.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.gLEntry.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.match.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.auditLogEntry.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.agentTrace.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.uploadBatch.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.matchSettings.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.fund.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.account.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.policyRule.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.closePeriod.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.issuedCheck.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.positivePayException.updateMany({ where: { companyId: null }, data: { companyId } }),
-    prisma.anomalyFlag.updateMany({ where: { companyId: null }, data: { companyId } }),
-  ]);
-
-  const labels = [
-    "users", "bank transactions", "GL entries", "matches", "audit log entries",
-    "agent traces", "upload batches", "match settings", "funds", "accounts",
-    "policy rules", "close periods", "issued checks", "positive pay exceptions",
-    "anomaly flags",
+  // Raw SQL, not prisma.<model>.updateMany({ where: { companyId: null } }):
+  // schema.prisma already declares companyId as required (the codebase has
+  // moved on to the post-require_company state), so the generated Prisma
+  // Client rejects `companyId: null` as an invalid filter at runtime even
+  // though the actual Postgres column has no NOT NULL constraint yet on a
+  // database that's still mid-backfill. Raw SQL talks to the real column
+  // directly and sidesteps that mismatch.
+  const tables = [
+    { table: "User", label: "users" },
+    { table: "BankTransaction", label: "bank transactions" },
+    { table: "GLEntry", label: "GL entries" },
+    { table: "Match", label: "matches" },
+    { table: "AuditLogEntry", label: "audit log entries" },
+    { table: "AgentTrace", label: "agent traces" },
+    { table: "UploadBatch", label: "upload batches" },
+    { table: "MatchSettings", label: "match settings" },
+    { table: "Fund", label: "funds" },
+    { table: "Account", label: "accounts" },
+    { table: "PolicyRule", label: "policy rules" },
+    { table: "ClosePeriod", label: "close periods" },
+    { table: "IssuedCheck", label: "issued checks" },
+    { table: "PositivePayException", label: "positive pay exceptions" },
+    { table: "AnomalyFlag", label: "anomaly flags" },
   ];
 
-  labels.forEach((label, i) => {
-    console.log(`Backfilled ${results[i].count} ${label}.`);
-  });
+  for (const { table, label } of tables) {
+    const count = await prisma.$executeRawUnsafe(
+      `UPDATE "${table}" SET "companyId" = $1 WHERE "companyId" IS NULL`,
+      companyId
+    );
+    console.log(`Backfilled ${count} ${label}.`);
+  }
 
   console.log(`\nDone. Everything existing now belongs to Demo Company (${companyId}).`);
 }
