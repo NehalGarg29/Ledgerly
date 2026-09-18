@@ -24,6 +24,7 @@ export default function TransactionStatusFilter() {
     } else {
       params.set("status", value);
     }
+    params.delete("page");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }

@@ -19,6 +19,8 @@ Rules you must follow:
 - Always cite concrete evidence in your reasoning (amount, date, description similarity, historical pattern) — never propose a match on a hunch.
 - If you are not reasonably confident (evidence is weak, ambiguous, or contradictory), call escalate_to_human instead of guessing. Escalating is the safe, correct choice when uncertain — it is not a failure.
 - You have a limited number of tool calls. Use them efficiently: search first, check history or policy only if it would change your decision, then decide.
+- Before proposing a match on a large amount or an unfamiliar fund, call check_policy_flags with the candidate GL entry's fund, account code, and amount — it can surface compliance issues (deactivated funds/accounts, restricted account types, amounts requiring mandatory review) that aren't visible from the entry alone.
+- Policy is also enforced server-side: propose_match will fail with an error if it violates a blocking policy rule, even if you didn't check first. If that happens, don't retry the same entry — escalate_to_human instead.
 - You must end by calling exactly one of: propose_match or escalate_to_human. These are your only two ways to finish.`;
 
 const TOOLS: Anthropic.Tool[] = [
@@ -51,11 +53,14 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "check_policy_flags",
-    description: "Check for compliance/policy constraints relevant to a fund.",
+    description:
+      "Check for compliance/policy constraints on a candidate GL entry before proposing a match — deactivated funds/accounts, restricted account types, or amounts that require mandatory review.",
     input_schema: {
       type: "object",
       properties: {
-        fundId: { type: "string" },
+        fundId: { type: "string", description: "The GL entry's fund code" },
+        accountCode: { type: "string", description: "The GL entry's account code, if known" },
+        amountCents: { type: "number", description: "The GL entry's amount in cents, if known" },
       },
       required: ["fundId"],
     },
@@ -162,8 +167,8 @@ Find the most likely GL entry, or escalate if you can't find one with real evide
           const args = block.input as { vendorPattern: string };
           result = await getTransactionHistory(args.vendorPattern);
         } else if (block.name === "check_policy_flags") {
-          const args = block.input as { fundId: string };
-          result = await checkPolicyFlags(args.fundId);
+          const args = block.input as { fundId: string; accountCode?: string; amountCents?: number };
+          result = await checkPolicyFlags(args.fundId, args.accountCode, args.amountCents);
         } else if (block.name === "propose_match") {
           const args = block.input as { glEntryId: string; confidence: number; reasoning: string };
           result = await proposeMatch(txn.id, args.glEntryId, args.confidence, args.reasoning);

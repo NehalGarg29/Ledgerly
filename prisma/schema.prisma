@@ -32,6 +32,60 @@ enum UserRole{
   viewer
 }
 
+enum AccountType {
+  asset
+  liability
+  equity
+  revenue
+  expense
+}
+
+enum PolicyRuleType {
+  max_amount
+  inactive_fund_or_account
+  restricted_account_type
+}
+
+enum PolicySeverity {
+  block
+  warn
+}
+
+enum ClosePeriodStatus {
+  open
+  closed
+}
+
+enum IssuedCheckStatus {
+  issued
+  cleared
+  voided
+}
+
+enum PositivePayExceptionType {
+  unauthorized_check
+  amount_mismatch
+  duplicate_presentment
+}
+
+enum PositivePayExceptionStatus {
+  pending
+  paid
+  returned
+}
+
+enum AnomalyType {
+  round_number
+  duplicate_transaction
+  statistical_outlier
+}
+
+enum AnomalyStatus {
+  pending
+  dismissed
+  confirmed
+}
+
 model BankTransaction {
   id           String   @id @default(uuid())
   accountId    String
@@ -41,8 +95,14 @@ model BankTransaction {
   sourceFormat String
   createdAt    DateTime @default(now())
 
+  uploadBatchId String?
+  uploadBatch   UploadBatch? @relation(fields: [uploadBatchId], references: [id])
+
   matches Match[]
   agentTraces  AgentTrace[]
+  clearedCheck          IssuedCheck?
+  positivePayException  PositivePayException?
+  anomalyFlags          AnomalyFlag[]
 }
 
 model GLEntry {
@@ -54,6 +114,9 @@ model GLEntry {
   description String
   source      String   @default("upload") // "upload" (from a file) or "manual" (keyed in by a reviewer)
   createdAt   DateTime @default(now())
+
+  uploadBatchId String?
+  uploadBatch   UploadBatch? @relation(fields: [uploadBatchId], references: [id])
 
   matches Match[]
 }
@@ -67,6 +130,7 @@ model Match {
   matchType         MatchType
   confidenceScore   Float?
   status            MatchStatus
+  reviewReason      String?
   reviewedByUserId  String?
   reviewedBy        User?       @relation(fields: [reviewedByUserId], references: [id])
   reviewedAt        DateTime?
@@ -94,6 +158,7 @@ model User {
 
   reviewedMatches Match[]
   auditActions    AuditLogEntry[]
+  closedPeriods   ClosePeriod[]
 }
 
 model AgentTrace {
@@ -107,4 +172,115 @@ model AgentTrace {
   proposedConfidence Float?
   matchId            String?
   createdAt          DateTime @default(now())
+}
+
+model UploadBatch {
+  id          String   @id @default(uuid())
+  source      String   // "bank" or "gl"
+  filename    String
+  contentHash String   @unique
+  rowCount    Int
+  createdAt   DateTime @default(now())
+
+  bankTransactions BankTransaction[]
+  glEntries        GLEntry[]
+}
+
+model MatchSettings {
+  id                   String   @id @default("singleton")
+  autoApproveThreshold Float    @default(0.9)
+  suggestThreshold     Float    @default(0.5)
+  updatedAt            DateTime @updatedAt
+}
+
+model Fund {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  parentFundId String?
+  parent       Fund?    @relation("FundHierarchy", fields: [parentFundId], references: [id])
+  children     Fund[]   @relation("FundHierarchy")
+}
+
+model Account {
+  id              String      @id @default(uuid())
+  code            String      @unique
+  name            String
+  type            AccountType
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+
+  parentAccountId String?
+  parent          Account?    @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  children        Account[]   @relation("AccountHierarchy")
+}
+
+model PolicyRule {
+  id                  String         @id @default(uuid())
+  name                String
+  ruleType            PolicyRuleType
+  severity            PolicySeverity @default(warn)
+  fundCode            String?        // null = applies to every fund
+  thresholdCents      Int?           // used by max_amount rules
+  allowedAccountTypes AccountType[]  // used by restricted_account_type rules
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+}
+
+model ClosePeriod {
+  id             String            @id @default(uuid())
+  period         String            @unique // "YYYY-MM"
+  status         ClosePeriodStatus @default(open)
+  closedAt       DateTime?
+  closedByUserId String?
+  closedBy       User?             @relation(fields: [closedByUserId], references: [id])
+  createdAt      DateTime          @default(now())
+}
+
+model IssuedCheck {
+  id          String            @id @default(uuid())
+  checkNumber String
+  payee       String
+  amountCents Int
+  issueDate   String
+  accountId   String
+  status      IssuedCheckStatus @default(issued)
+  createdAt   DateTime          @default(now())
+  voidedAt    DateTime?
+
+  clearedBankTransactionId String?                @unique
+  clearedBankTransaction   BankTransaction?        @relation(fields: [clearedBankTransactionId], references: [id])
+  exceptions               PositivePayException[]
+}
+
+model PositivePayException {
+  id                  String                     @id @default(uuid())
+  bankTransactionId   String                     @unique
+  bankTransaction     BankTransaction            @relation(fields: [bankTransactionId], references: [id])
+  issuedCheckId       String?
+  issuedCheck         IssuedCheck?               @relation(fields: [issuedCheckId], references: [id])
+  exceptionType       PositivePayExceptionType
+  detectedCheckNumber String?
+  status              PositivePayExceptionStatus @default(pending)
+  reviewReason        String?
+  reviewedAt          DateTime?
+  createdAt           DateTime                   @default(now())
+}
+
+model AnomalyFlag {
+  id                String        @id @default(uuid())
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  anomalyType       AnomalyType
+  severity          Float
+  explanation       String
+  status            AnomalyStatus @default(pending)
+  reviewReason      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime      @default(now())
+
+  @@unique([bankTransactionId, anomalyType])
 }

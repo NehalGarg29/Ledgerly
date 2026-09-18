@@ -7,8 +7,14 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/transactions", label: "Transactions" },
   { href: "/exceptions", label: "Exceptions" },
+  { href: "/accounts", label: "Chart of Accounts" },
+  { href: "/close", label: "Month-End Close" },
+  { href: "/positive-pay", label: "Positive Pay" },
+  { href: "/forecast", label: "Cash Forecast" },
+  { href: "/anomalies", label: "Anomalies" },
   { href: "/audit-log", label: "Audit log" },
   { href: "/upload", label: "Upload" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function Sidebar({

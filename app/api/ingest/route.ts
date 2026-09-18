@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { prisma } from "../../../lib/prisma";
 import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
 import { parseCsvString } from "../../../lib/adapters/csvAdapter";
 import { parseJsonString } from "../../../lib/adapters/jsonAdapter";
 import { parseBai2String } from "../../../lib/adapters/bai2Adapter";
 import { runExactMatchPass, runFuzzyMatchPass } from "../../../lib/matchEngine";
+import { periodFromDate, getClosedPeriodsAmong } from "../../../lib/closePeriod";
+import { runPositivePayPass } from "../../../lib/positivePay";
+import { detectAnomalies } from "../../../lib/anomalyDetection";
 
 type Format = "csv" | "json" | "bai2";
 
@@ -39,6 +43,7 @@ export async function POST(request: NextRequest) {
   }
 
   const content = await file.text();
+  const contentHash = createHash("sha256").update(content).digest("hex");
 
   let parsed;
   try {
@@ -65,22 +70,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Viewers cannot upload files" }, { status: 403 });
   }
 
-  await prisma.bankTransaction.createMany({
-    data: parsed.map((txn) => ({
-      accountId: txn.accountId,
-      date: txn.date,
-      amountCents: txn.amountCents,
-      memo: txn.memo,
-      sourceFormat: txn.sourceFormat,
-    })),
+  const existingBatch = await prisma.uploadBatch.findUnique({ where: { contentHash } });
+  if (existingBatch) {
+    return NextResponse.json(
+      {
+        error: `This exact file was already uploaded on ${existingBatch.createdAt.toLocaleString()} (as "${existingBatch.filename}"). Nothing was ingested.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  const closedPeriods = await getClosedPeriodsAmong(parsed.map((txn) => periodFromDate(txn.date)));
+  if (closedPeriods.length > 0) {
+    return NextResponse.json(
+      {
+        error: `This file has transactions dated in a closed period (${closedPeriods.join(", ")}). Reopen the period before uploading, or remove those rows.`,
+      },
+      { status: 423 }
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const batch = await tx.uploadBatch.create({
+      data: {
+        source: "bank",
+        filename: file.name,
+        contentHash,
+        rowCount: parsed.length,
+      },
+    });
+
+    await tx.bankTransaction.createMany({
+      data: parsed.map((txn) => ({
+        accountId: txn.accountId,
+        date: txn.date,
+        amountCents: txn.amountCents,
+        memo: txn.memo,
+        sourceFormat: txn.sourceFormat,
+        uploadBatchId: batch.id,
+      })),
+    });
   });
 
   const exactMatches = await runExactMatchPass();
   const fuzzyMatches = await runFuzzyMatchPass();
+  const positivePay = await runPositivePayPass();
+  const anomalies = await detectAnomalies();
 
   return NextResponse.json({
     ingested: parsed.length,
     exactMatches,
     fuzzyMatches,
+    positivePay,
+    anomalies,
   });
 }

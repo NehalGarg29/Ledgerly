@@ -1,12 +1,13 @@
 import { prisma } from "./prisma";
+import { getMatchSettings } from "./matchSettings";
 
-function daysBetween(dateA: string, dateB: string): number {
+export function daysBetween(dateA: string, dateB: string): number {
   const a = new Date(dateA).getTime();
   const b = new Date(dateB).getTime();
   return Math.abs(a - b) / (1000 * 60 * 60 * 24);
 }
 
-function calculateConfidence(bankAmountCents: number, glAmountCents: number, daysApart: number): number {
+export function calculateConfidence(bankAmountCents: number, glAmountCents: number, daysApart: number): number {
   const dateScore = Math.max(0, 1 - daysApart * 0.15);
 
   const amountDiffCents = Math.abs(bankAmountCents - glAmountCents);
@@ -78,8 +79,8 @@ export async function runFuzzyMatchPass(): Promise<number> {
   });
 
   const usedGLEntryIds = new Set<string>();
-  const AUTO_APPROVE_THRESHOLD = 0.9;
-  const SUGGEST_THRESHOLD = 0.5;
+  const { autoApproveThreshold: AUTO_APPROVE_THRESHOLD, suggestThreshold: SUGGEST_THRESHOLD } =
+    await getMatchSettings();
   let matchCount = 0;
 
   for (const txn of unmatchedBankTxns) {

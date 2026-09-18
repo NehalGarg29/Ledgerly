@@ -1,16 +1,53 @@
 import { prisma } from "./prisma";
 
-export async function getAllTransactions() {
-  const transactions = await prisma.bankTransaction.findMany({
-    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    include: {
-      matches: {
-        include: { glEntry: true },
-      },
-    },
-  });
+type StatusFilter =
+  | "all"
+  | "auto_approved"
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "unmatched";
 
-  return transactions.map((txn) => {
+export async function getAllTransactions({
+  status,
+  skip = 0,
+  take,
+}: {
+  status?: string;
+  skip?: number;
+  take?: number;
+} = {}) {
+  const normalizedStatus = (status as StatusFilter) || "all";
+
+  const where =
+    normalizedStatus === "all"
+      ? {}
+      : normalizedStatus === "unmatched"
+        ? { matches: { none: {} } }
+        : {
+            matches: {
+              some: {
+                status: normalizedStatus as "auto_approved" | "pending_review" | "approved" | "rejected",
+              },
+            },
+          };
+
+  const [rows, totalCount] = await Promise.all([
+    prisma.bankTransaction.findMany({
+      where,
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      skip,
+      take,
+      include: {
+        matches: {
+          include: { glEntry: true },
+        },
+      },
+    }),
+    prisma.bankTransaction.count({ where }),
+  ]);
+
+  const transactions = rows.map((txn) => {
     const match = txn.matches[0] ?? null;
     return {
       id: txn.id,
@@ -35,4 +72,31 @@ export async function getAllTransactions() {
         : null,
     };
   });
+
+  return { transactions, totalCount };
+}
+
+export async function getTransactionsSummary() {
+  const [totalCount, reconciledCount, inflow, outflow] = await Promise.all([
+    prisma.bankTransaction.count(),
+    prisma.match.count({ where: { status: { in: ["auto_approved", "approved"] } } }),
+    prisma.bankTransaction.aggregate({
+      _sum: { amountCents: true },
+      where: { amountCents: { gt: 0 } },
+    }),
+    prisma.bankTransaction.aggregate({
+      _sum: { amountCents: true },
+      where: { amountCents: { lt: 0 } },
+    }),
+  ]);
+
+  const reconciliationRate = totalCount === 0 ? 0 : reconciledCount / totalCount;
+
+  return {
+    totalCount,
+    reconciledCount,
+    reconciliationRate,
+    inflowCents: inflow._sum.amountCents ?? 0,
+    outflowCents: Math.abs(outflow._sum.amountCents ?? 0),
+  };
 }

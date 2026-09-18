@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { checkPolicyFlags as evaluatePolicy } from "../policyEngine";
 
 // --- Tool 1: search_gl_entries ---
 export interface SearchGlEntriesArgs {
@@ -70,12 +71,12 @@ export async function getTransactionHistory(vendorPattern: string) {
 }
 
 // --- Tool 3: check_policy_flags ---
-export async function checkPolicyFlags(fundId: string) {
-  return {
-    fundId,
-    checked: false,
-    message: "No policy rules are configured for this fund yet. Compliance checking is not implemented.",
-  };
+export async function checkPolicyFlags(fundId: string, accountCode?: string, amountCents?: number) {
+  const { flags, blocked } = await evaluatePolicy(fundId, accountCode, amountCents);
+  if (flags.length === 0) {
+    return { fundId, blocked: false, flags: [], message: "No policy flags for this fund/account/amount." };
+  }
+  return { fundId, blocked, flags };
 }
 
 // --- Tool 4 (terminal): propose_match ---
@@ -93,6 +94,17 @@ export async function proposeMatch(
   const existingMatch = await prisma.match.findFirst({ where: { glEntryId } });
   if (existingMatch) {
     throw new Error(`GL entry ${glEntryId} is already matched to another transaction.`);
+  }
+
+  // Policy is enforced here regardless of whether the agent bothered to call
+  // check_policy_flags itself — an LLM tool call is advisory, this is not.
+  const { flags, blocked } = await evaluatePolicy(glEntry.fundId, glEntry.accountCode, glEntry.amountCents);
+  if (blocked) {
+    const blockingMessages = flags
+      .filter((f) => f.severity === "block")
+      .map((f) => f.message)
+      .join(" ");
+    throw new Error(`Policy violation — cannot propose this match: ${blockingMessages}`);
   }
 
   const match = await prisma.match.create({
@@ -117,11 +129,12 @@ export async function proposeMatch(
         glEntryId,
         confidenceScore: confidence,
         reasoning,
+        policyFlags: flags,
       },
     },
   });
 
-  return { matchId: match.id, glEntryId, confidence, reasoning };
+  return { matchId: match.id, glEntryId, confidence, reasoning, policyFlags: flags };
 }
 
 // --- Tool 5 (terminal): escalate_to_human ---

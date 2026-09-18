@@ -22,6 +22,7 @@ export async function GET() {
       matchType: match.matchType,
       confidenceScore: match.confidenceScore,
       kind: "pending_review" as const,
+      createdAt: match.createdAt,
     })),
     ...unmatchedTransactions.map((txn) => ({
       id: txn.id,
@@ -30,6 +31,7 @@ export async function GET() {
       matchType: null,
       confidenceScore: null,
       kind: "unmatched" as const,
+      createdAt: txn.createdAt,
     })),
   ];
 

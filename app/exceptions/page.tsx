@@ -6,6 +6,9 @@ import { formatCents } from "../../lib/format";
 import { AgentTracePanel, type AgentTrace } from "../../components/AgentTracePanel";
 import { ManualMatchPanel } from "../../components/ManualMatchPanel";
 import { describeFuzzyConfidence } from "../../lib/confidenceBreakdown";
+import { getAgeDays, describeAge, ageColorClass } from "../../lib/exceptionAge";
+import StatCard, { StatCardGrid } from "../../components/StatCard";
+import { ClockIcon, BrokenLinkIcon, AlertTriangleIcon } from "../../components/icons";
 
 type Exception = {
   id: string;
@@ -28,6 +31,7 @@ type Exception = {
   matchType: "exact" | "fuzzy" | "ai_suggested" | "manual" | null;
   confidenceScore: number | null;
   kind: "pending_review" | "unmatched";
+  createdAt: string;
 };
 
 function MatchBadge({ kind, matchType }: { kind: string; matchType: string | null }) {
@@ -63,6 +67,8 @@ export default function ExceptionsPage() {
   const [traces, setTraces] = useState<Record<string, AgentTrace>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [investigateError, setInvestigateError] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   function loadExceptions() {
     return fetch("/api/exceptions")
@@ -70,7 +76,10 @@ export default function ExceptionsPage() {
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
         return res.json();
       })
-      .then((data) => setExceptions(data.exceptions))
+      .then((data) => {
+        setExceptions(data.exceptions);
+        setPage(1);
+      })
       .catch((err) => setError(err.message));
   }
 
@@ -79,13 +88,10 @@ export default function ExceptionsPage() {
   }, []);
 
   async function handleReview(exception: Exception, action: "approve" | "reject") {
-    if (
-      !window.confirm(
-        `${action === "approve" ? "Approve" : "Reject"} this match? This can't be undone.`
-      )
-    ) {
-      return;
-    }
+    const reason = window.prompt(
+      `${action === "approve" ? "Approve" : "Reject"} this match. Add a reason (optional), or Cancel to back out.`
+    );
+    if (reason === null) return;
     setPendingRowId(exception.id);
     setRowError((prev) => ({ ...prev, [exception.id]: "" }));
 
@@ -93,7 +99,7 @@ export default function ExceptionsPage() {
       const res = await fetch(`/api/exceptions/${exception.id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, kind: exception.kind }),
+        body: JSON.stringify({ action, kind: exception.kind, reason: reason || undefined }),
       });
 
       if (!res.ok) {
@@ -150,7 +156,7 @@ export default function ExceptionsPage() {
 
       {!canReview && (
         <p className="mt-4 rounded-md bg-zinc-100 px-3 py-2 text-xs text-zinc-600">
-          Viewing as Viewer — read only. Switch roles in the sidebar to review exceptions.
+          Viewing as Viewer — read only. Log in as an analyst or admin account to review exceptions.
         </p>
       )}
 
@@ -171,6 +177,34 @@ export default function ExceptionsPage() {
       )}
 
       {exceptions && exceptions.length > 0 && (
+        <div className="mt-6">
+          <StatCardGrid>
+            <StatCard
+              label="Pending Review"
+              value={exceptions.filter((e) => e.kind === "pending_review").length.toString()}
+              icon={ClockIcon}
+              accent="text-amber-600"
+              iconBg="bg-amber-50 text-amber-600"
+            />
+            <StatCard
+              label="Unmatched"
+              value={exceptions.filter((e) => e.kind === "unmatched").length.toString()}
+              icon={BrokenLinkIcon}
+              accent="text-zinc-900"
+              iconBg="bg-zinc-100 text-zinc-600"
+            />
+            <StatCard
+              label="Oldest Exception"
+              value={describeAge(Math.max(...exceptions.map((e) => getAgeDays(e.createdAt))))}
+              icon={AlertTriangleIcon}
+              accent="text-red-600"
+              iconBg="bg-red-50 text-red-600"
+            />
+          </StatCardGrid>
+        </div>
+      )}
+
+      {exceptions && exceptions.length > 0 && (
         <div className="mt-8 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500">
@@ -179,11 +213,12 @@ export default function ExceptionsPage() {
                 <th className="px-4 py-2 font-medium">Candidate GL Entry</th>
                 <th className="px-4 py-2 font-medium">Match</th>
                 <th className="px-4 py-2 font-medium">Confidence</th>
+                <th className="px-4 py-2 font-medium">Age</th>
                 <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {exceptions.map((exception) => {
+              {exceptions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((exception) => {
                 const isPending = pendingRowId === exception.id;
                 const canApprove = exception.glEntry !== null;
                 const txnId = exception.bankTransaction.id;
@@ -246,6 +281,9 @@ export default function ExceptionsPage() {
                           </p>
                         )}
                       </td>
+                      <td className={`px-4 py-3 ${ageColorClass(getAgeDays(exception.createdAt))}`}>
+                        {describeAge(getAgeDays(exception.createdAt))}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex flex-wrap justify-end gap-2">
                           {exception.kind === "unmatched" ? (
@@ -300,7 +338,7 @@ export default function ExceptionsPage() {
                     </tr>
                     {exception.kind === "unmatched" && isExpanded && (
                       <tr>
-                        <td colSpan={5} className="space-y-3 bg-zinc-50 px-4 py-3">
+                        <td colSpan={6} className="space-y-3 bg-zinc-50 px-4 py-3">
                           {trace && <AgentTracePanel trace={trace} />}
                           <ManualMatchPanel
                             transactionId={txnId}
@@ -322,6 +360,32 @@ export default function ExceptionsPage() {
               })}
             </tbody>
           </table>
+
+          {exceptions.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t border-zinc-100 px-4 py-3 text-sm">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-zinc-500">
+                Page {page} of {Math.max(1, Math.ceil(exceptions.length / PAGE_SIZE))}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setPage((p) => Math.min(Math.ceil(exceptions.length / PAGE_SIZE), p + 1))
+                }
+                disabled={page >= Math.ceil(exceptions.length / PAGE_SIZE)}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
     </main>

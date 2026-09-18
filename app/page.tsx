@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getDashboardStats } from "../lib/dashboardStats";
 import { getAnalyticsStats } from "../lib/analyticsStats";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
 import { formatCents } from "../lib/format";
+import { verifySessionToken } from "../lib/session";
+import Avatar from "../components/Avatar";
 
 // This page reads live data straight from Postgres on every load. Without
 // this, Next.js statically prerenders it at build time and would serve a
@@ -16,12 +19,52 @@ type Card = {
   sub?: string;
   href?: string;
   accent: string;
+  iconBg: string;
+  icon: React.ReactNode;
   progress?: number;
 };
+
+const CashIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <rect x="2" y="5" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const CheckIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M6.5 10.2l2.2 2.2 4.8-5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const AlertIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <path d="M10 3.5l7.5 13h-15L10 3.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <path d="M10 8.5v3.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="10" cy="14" r="0.75" fill="currentColor" />
+  </svg>
+);
+
+const LinkIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <path d="M8 12l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M7 13.5a3 3 0 010-4.2l1.5-1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M13 6.5a3 3 0 010 4.2l-1.5 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
 
 export default async function Dashboard() {
   const stats = await getDashboardStats();
   const analytics = await getAnalyticsStats();
+  const cookieStore = await cookies();
+  const session = verifySessionToken(cookieStore.get("session")?.value);
   const reconciliationPct = stats.reconciliationRate * 100;
   const isFullyReconciled = stats.pendingExceptionsCount === 0;
 
@@ -31,6 +74,8 @@ export default async function Dashboard() {
       value: formatCents(stats.totalCashCents),
       href: "#accounts",
       accent: "text-emerald-600",
+      iconBg: "bg-emerald-50 text-emerald-600",
+      icon: CashIcon,
     },
     {
       label: "Reconciliation Rate",
@@ -38,6 +83,8 @@ export default async function Dashboard() {
       sub: `${stats.reconciledCount} of ${stats.totalTransactions} transactions`,
       href: "/transactions",
       accent: "text-emerald-600",
+      iconBg: "bg-emerald-50 text-emerald-600",
+      icon: CheckIcon,
       progress: reconciliationPct,
     },
     {
@@ -45,26 +92,46 @@ export default async function Dashboard() {
       value: stats.pendingExceptionsCount.toString(),
       href: "/exceptions",
       accent: isFullyReconciled ? "text-emerald-600" : "text-amber-600",
+      iconBg: isFullyReconciled ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600",
+      icon: AlertIcon,
     },
     {
       label: "Connected Accounts",
       value: stats.connectedAccountsCount.toString(),
       href: "#accounts",
       accent: "text-zinc-900",
+      iconBg: "bg-zinc-100 text-zinc-600",
+      icon: LinkIcon,
     },
   ];
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8">
-      <p className="text-sm text-zinc-500">
-        Cash position and reconciliation status across connected accounts.
-      </p>
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <p className="text-sm text-zinc-500">
+          Cash position and reconciliation status across connected accounts.
+        </p>
+        {session && (
+          <div className="flex items-center gap-2.5">
+            <Avatar email={session.email} role={session.role} size="sm" />
+            <span className="text-sm text-zinc-600">
+              Welcome back,{" "}
+              <span className="font-medium text-zinc-900">{session.email.split("@")[0]}</span>
+            </span>
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => {
           const content = (
             <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-colors hover:border-emerald-300">
-              <p className="text-sm font-medium text-zinc-500">{card.label}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-zinc-500">{card.label}</p>
+                <span className={`flex h-8 w-8 items-center justify-center rounded-full ${card.iconBg}`}>
+                  {card.icon}
+                </span>
+              </div>
               <p className={`mt-2 text-3xl font-semibold tracking-tight ${card.accent}`}>
                 {card.value}
               </p>

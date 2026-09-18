@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { prisma } from "../../../lib/prisma";
 import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
 import { parseGlCsvString } from "../../../lib/adapters/glAdapter";
 import { runExactMatchPass, runFuzzyMatchPass } from "../../../lib/matchEngine";
+import { periodFromDate, getClosedPeriodsAmong } from "../../../lib/closePeriod";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -14,6 +16,7 @@ export async function POST(request: NextRequest) {
   }
 
   const content = await file.text();
+  const contentHash = createHash("sha256").update(content).digest("hex");
 
   let parsed;
   try {
@@ -35,17 +38,49 @@ export async function POST(request: NextRequest) {
 
   const role = getRoleFromRequest(request);
   if (role === "viewer") {
-    return NextResponse.json({ error: "Viewers cannot upload files" }, { status: 403 });
+    return NextResponse.json({ error: "Viewers cannot create GL entries" }, { status: 403 });
   }
 
-  await prisma.gLEntry.createMany({
-    data: parsed.map((entry) => ({
-      fundId: entry.fundId,
-      accountCode: entry.accountCode,
-      amountCents: entry.amountCents,
-      date: entry.date,
-      description: entry.description,
-    })),
+  const existingBatch = await prisma.uploadBatch.findUnique({ where: { contentHash } });
+  if (existingBatch) {
+    return NextResponse.json(
+      {
+        error: `This exact file was already uploaded on ${existingBatch.createdAt.toLocaleString()} (as "${existingBatch.filename}"). Nothing was ingested.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  const closedPeriods = await getClosedPeriodsAmong(parsed.map((entry) => periodFromDate(entry.date)));
+  if (closedPeriods.length > 0) {
+    return NextResponse.json(
+      {
+        error: `This file has GL entries dated in a closed period (${closedPeriods.join(", ")}). Reopen the period before uploading, or remove those rows.`,
+      },
+      { status: 423 }
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const batch = await tx.uploadBatch.create({
+      data: {
+        source: "gl",
+        filename: file.name,
+        contentHash,
+        rowCount: parsed.length,
+      },
+    });
+
+    await tx.gLEntry.createMany({
+      data: parsed.map((entry) => ({
+        fundId: entry.fundId,
+        accountCode: entry.accountCode,
+        amountCents: entry.amountCents,
+        date: entry.date,
+        description: entry.description,
+        uploadBatchId: batch.id,
+      })),
+    });
   });
 
   const exactMatches = await runExactMatchPass();
