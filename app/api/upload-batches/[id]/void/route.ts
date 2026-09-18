@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
-import { getRoleFromRequest } from "../../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../../lib/getRoleFromRequest";
 
 // Deletes an upload batch and everything it created: its bank transactions,
 // its GL entries, and any matches touching either side of that (even a
@@ -20,10 +20,14 @@ export async function POST(
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot void an upload batch" }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { id } = await params;
 
-  const batch = await prisma.uploadBatch.findUnique({ where: { id } });
+  const batch = await prisma.uploadBatch.findFirst({ where: { id, companyId } });
   if (!batch) {
     return NextResponse.json({ error: "Upload batch not found" }, { status: 404 });
   }
@@ -74,6 +78,7 @@ export async function POST(
           uploadedAt: batch.createdAt,
         },
         afterState: result,
+        companyId,
       },
     });
 

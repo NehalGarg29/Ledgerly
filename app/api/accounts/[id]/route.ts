@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { getRoleFromRequest } from "../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../lib/getRoleFromRequest";
 
 const ACCOUNT_TYPES = ["asset", "liability", "equity", "revenue", "expense"] as const;
 
@@ -9,9 +9,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (role !== "admin") {
     return NextResponse.json({ error: "Only admins can edit accounts." }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { id } = await params;
-  const existing = await prisma.account.findUnique({ where: { id } });
+  const existing = await prisma.account.findFirst({ where: { id, companyId } });
   if (!existing) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
   }
@@ -38,7 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } else if (parentCode === existing.code) {
       return NextResponse.json({ error: "An account can't be its own parent." }, { status: 400 });
     } else {
-      const parent = await prisma.account.findUnique({ where: { code: parentCode } });
+      const parent = await prisma.account.findFirst({ where: { companyId, code: parentCode } });
       if (!parent) {
         return NextResponse.json({ error: `Parent account "${parentCode}" not found.` }, { status: 400 });
       }
@@ -73,6 +77,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         parentAccountId: account.parentAccountId,
         isActive: account.isActive,
       },
+      companyId,
     },
   });
 

@@ -4,6 +4,7 @@ export type SessionPayload = {
   userId: string;
   email: string;
   role: "admin" | "analyst" | "viewer";
+  companyId: string;
   exp: number; // unix ms
 };
 

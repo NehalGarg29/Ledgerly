@@ -27,11 +27,14 @@ export type ForecastResult = {
 // known concrete outflows rather than folded into the average, so it's
 // clear which numbers are "historical pattern" versus "we actually know
 // this is coming."
-export async function getCashForecast(daysAhead = 30): Promise<ForecastResult> {
+export async function getCashForecast(companyId: string, daysAhead = 30): Promise<ForecastResult> {
   const [stats, transactions, issuedChecks] = await Promise.all([
-    getDashboardStats(),
-    prisma.bankTransaction.findMany({ select: { date: true, amountCents: true } }),
-    prisma.issuedCheck.findMany({ where: { status: "issued" }, orderBy: { issueDate: "asc" } }),
+    getDashboardStats(companyId),
+    prisma.bankTransaction.findMany({ where: { companyId }, select: { date: true, amountCents: true } }),
+    prisma.issuedCheck.findMany({
+      where: { companyId, status: "issued" },
+      orderBy: { issueDate: "asc" },
+    }),
   ]);
 
   const currentBalanceCents = stats.totalCashCents;

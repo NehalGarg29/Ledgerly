@@ -10,9 +10,10 @@ export interface SearchGlEntriesArgs {
   fundId?: string;
 }
 
-export async function searchGlEntries(args: SearchGlEntriesArgs) {
+export async function searchGlEntries(companyId: string, args: SearchGlEntriesArgs) {
   const entries = await prisma.gLEntry.findMany({
     where: {
+      companyId,
       matches: { none: {} },
       ...(args.fundId ? { fundId: args.fundId } : {}),
       ...(args.minAmountCents !== undefined || args.maxAmountCents !== undefined
@@ -46,9 +47,10 @@ export async function searchGlEntries(args: SearchGlEntriesArgs) {
 }
 
 // --- Tool 2: get_transaction_history ---
-export async function getTransactionHistory(vendorPattern: string) {
+export async function getTransactionHistory(companyId: string, vendorPattern: string) {
   const transactions = await prisma.bankTransaction.findMany({
     where: {
+      companyId,
       memo: { contains: vendorPattern, mode: "insensitive" },
       matches: { some: {} },
     },
@@ -71,8 +73,13 @@ export async function getTransactionHistory(vendorPattern: string) {
 }
 
 // --- Tool 3: check_policy_flags ---
-export async function checkPolicyFlags(fundId: string, accountCode?: string, amountCents?: number) {
-  const { flags, blocked } = await evaluatePolicy(fundId, accountCode, amountCents);
+export async function checkPolicyFlags(
+  companyId: string,
+  fundId: string,
+  accountCode?: string,
+  amountCents?: number
+) {
+  const { flags, blocked } = await evaluatePolicy(companyId, fundId, accountCode, amountCents);
   if (flags.length === 0) {
     return { fundId, blocked: false, flags: [], message: "No policy flags for this fund/account/amount." };
   }
@@ -81,24 +88,30 @@ export async function checkPolicyFlags(fundId: string, accountCode?: string, amo
 
 // --- Tool 4 (terminal): propose_match ---
 export async function proposeMatch(
+  companyId: string,
   bankTransactionId: string,
   glEntryId: string,
   confidence: number,
   reasoning: string
 ) {
-  const glEntry = await prisma.gLEntry.findUnique({ where: { id: glEntryId } });
+  const glEntry = await prisma.gLEntry.findFirst({ where: { id: glEntryId, companyId } });
   if (!glEntry) {
     throw new Error(`GL entry ${glEntryId} does not exist — cannot propose a match to a fabricated ID.`);
   }
 
-  const existingMatch = await prisma.match.findFirst({ where: { glEntryId } });
+  const existingMatch = await prisma.match.findFirst({ where: { glEntryId, companyId } });
   if (existingMatch) {
     throw new Error(`GL entry ${glEntryId} is already matched to another transaction.`);
   }
 
   // Policy is enforced here regardless of whether the agent bothered to call
   // check_policy_flags itself — an LLM tool call is advisory, this is not.
-  const { flags, blocked } = await evaluatePolicy(glEntry.fundId, glEntry.accountCode, glEntry.amountCents);
+  const { flags, blocked } = await evaluatePolicy(
+    companyId,
+    glEntry.fundId,
+    glEntry.accountCode,
+    glEntry.amountCents
+  );
   if (blocked) {
     const blockingMessages = flags
       .filter((f) => f.severity === "block")
@@ -114,6 +127,7 @@ export async function proposeMatch(
       matchType: "ai_suggested",
       confidenceScore: confidence,
       status: "pending_review",
+      companyId,
     },
   });
 
@@ -131,6 +145,7 @@ export async function proposeMatch(
         reasoning,
         policyFlags: flags,
       },
+      companyId,
     },
   });
 

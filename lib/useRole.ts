@@ -8,9 +8,15 @@ export function useRole(): Role {
   return useSession().role;
 }
 
-export function useSession(): { email: string | null; role: Role; loading: boolean } {
+export function useSession(): {
+  email: string | null;
+  role: Role;
+  companyId: string | null;
+  loading: boolean;
+} {
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("viewer");
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,6 +28,7 @@ export function useSession(): { email: string | null; role: Role; loading: boole
         if (d.user) {
           setEmail(d.user.email);
           setRole(d.user.role);
+          setCompanyId(d.user.companyId);
         }
       })
       .catch(() => {})
@@ -33,5 +40,5 @@ export function useSession(): { email: string | null; role: Role; loading: boole
     };
   }, []);
 
-  return { email, role, loading };
+  return { email, role, companyId, loading };
 }

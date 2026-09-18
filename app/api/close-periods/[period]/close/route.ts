@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
-import { getRoleFromRequest, getUserIdFromRequest } from "../../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getUserIdFromRequest, getCompanyIdFromRequest } from "../../../../../lib/getRoleFromRequest";
 import { getPeriodChecklist } from "../../../../../lib/closePeriod";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ period: string }> }) {
@@ -8,9 +8,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot close a period" }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { period } = await params;
-  const checklist = await getPeriodChecklist(period);
+  const checklist = await getPeriodChecklist(companyId, period);
 
   if (checklist.status === "closed") {
     return NextResponse.json({ error: `${period} is already closed.` }, { status: 409 });
@@ -26,8 +30,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const userId = getUserIdFromRequest(request);
   const closePeriod = await prisma.closePeriod.upsert({
-    where: { period },
-    create: { period, status: "closed", closedAt: new Date(), closedByUserId: userId },
+    where: { companyId_period: { companyId, period } },
+    create: { period, status: "closed", closedAt: new Date(), closedByUserId: userId, companyId },
     update: { status: "closed", closedAt: new Date(), closedByUserId: userId },
   });
 
@@ -38,6 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       action: "period_closed",
       actorUserId: userId,
       afterState: { period, closedAt: closePeriod.closedAt },
+      companyId,
     },
   });
 

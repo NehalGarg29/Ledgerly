@@ -7,9 +7,10 @@ export type PositivePayPassResult = { cleared: number; flagged: number; skipped:
 // it yet (no linked cleared check, no existing exception). Safe to call
 // repeatedly — on every bank upload, and on demand via the "Re-scan" button,
 // since it only ever touches unprocessed transactions.
-export async function runPositivePayPass(): Promise<PositivePayPassResult> {
+export async function runPositivePayPass(companyId: string): Promise<PositivePayPassResult> {
   const candidates = await prisma.bankTransaction.findMany({
     where: {
+      companyId,
       clearedCheck: { is: null },
       positivePayException: { is: null },
     },
@@ -27,7 +28,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
     }
 
     const issuedCheck = await prisma.issuedCheck.findFirst({
-      where: { accountId: txn.accountId, checkNumber, status: { not: "voided" } },
+      where: { companyId, accountId: txn.accountId, checkNumber, status: { not: "voided" } },
     });
 
     if (!issuedCheck) {
@@ -36,6 +37,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
           bankTransactionId: txn.id,
           exceptionType: "unauthorized_check",
           detectedCheckNumber: checkNumber,
+          companyId,
         },
       });
       await prisma.auditLogEntry.create({
@@ -44,6 +46,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
           entityId: txn.id,
           action: "positive_pay_flagged",
           afterState: { exceptionType: "unauthorized_check", checkNumber, amountCents: txn.amountCents },
+          companyId,
         },
       });
       flagged++;
@@ -57,6 +60,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
           issuedCheckId: issuedCheck.id,
           exceptionType: "duplicate_presentment",
           detectedCheckNumber: checkNumber,
+          companyId,
         },
       });
       await prisma.auditLogEntry.create({
@@ -65,6 +69,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
           entityId: txn.id,
           action: "positive_pay_flagged",
           afterState: { exceptionType: "duplicate_presentment", checkNumber, amountCents: txn.amountCents },
+          companyId,
         },
       });
       flagged++;
@@ -78,6 +83,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
           issuedCheckId: issuedCheck.id,
           exceptionType: "amount_mismatch",
           detectedCheckNumber: checkNumber,
+          companyId,
         },
       });
       await prisma.auditLogEntry.create({
@@ -91,6 +97,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
             expectedAmountCents: issuedCheck.amountCents,
             actualAmountCents: txn.amountCents,
           },
+          companyId,
         },
       });
       flagged++;
@@ -107,6 +114,7 @@ export async function runPositivePayPass(): Promise<PositivePayPassResult> {
         entityId: issuedCheck.id,
         action: "check_cleared",
         afterState: { checkNumber, amountCents: txn.amountCents, bankTransactionId: txn.id },
+        companyId,
       },
     });
     cleared++;

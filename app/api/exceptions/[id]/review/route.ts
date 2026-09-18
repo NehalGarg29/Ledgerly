@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
 import { Prisma } from "../../../../../lib/generated/prisma/client";
-import { getRoleFromRequest } from "../../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../../lib/getRoleFromRequest";
 import { checkPolicyFlags } from "../../../../../lib/policyEngine";
 import { periodFromDate, isPeriodClosed } from "../../../../../lib/closePeriod";
 
@@ -12,6 +12,10 @@ export async function POST(
   const role = getRoleFromRequest(request);
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot review exceptions" }, { status: 403 });
+  }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const { id } = await params;
@@ -28,8 +32,8 @@ export async function POST(
   }
 
   if (kind === "pending_review") {
-    const existingMatch = await prisma.match.findUnique({
-      where: { id },
+    const existingMatch = await prisma.match.findFirst({
+      where: { id, companyId },
       include: { glEntry: true, bankTransaction: true },
     });
     if (!existingMatch) {
@@ -37,7 +41,7 @@ export async function POST(
     }
 
     const period = periodFromDate(existingMatch.bankTransaction.date);
-    if (await isPeriodClosed(period)) {
+    if (await isPeriodClosed(companyId, period)) {
       return NextResponse.json(
         { error: `${period} is closed for editing. Reopen it under Month-End Close first.` },
         { status: 423 }
@@ -47,6 +51,7 @@ export async function POST(
     let policyFlags: Awaited<ReturnType<typeof checkPolicyFlags>>["flags"] = [];
     if (action === "approve" && existingMatch.glEntry) {
       const result = await checkPolicyFlags(
+        companyId,
         existingMatch.glEntry.fundId,
         existingMatch.glEntry.accountCode,
         existingMatch.glEntry.amountCents
@@ -60,6 +65,7 @@ export async function POST(
             action: "policy_blocked_approval",
             beforeState: { status: existingMatch.status },
             afterState: { flags: policyFlags },
+            companyId,
           },
         });
         return NextResponse.json(
@@ -98,21 +104,22 @@ export async function POST(
           reason: reason || undefined,
           ...(policyFlags.length > 0 ? { policyFlags } : {}),
         },
+        companyId,
       },
     });
 
     return NextResponse.json({ match: updatedMatch, policyFlags });
   }
 
-  const bankTransaction = await prisma.bankTransaction.findUnique({
-    where: { id },
+  const bankTransaction = await prisma.bankTransaction.findFirst({
+    where: { id, companyId },
   });
   if (!bankTransaction) {
     return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
   }
 
   const unmatchedPeriod = periodFromDate(bankTransaction.date);
-  if (await isPeriodClosed(unmatchedPeriod)) {
+  if (await isPeriodClosed(companyId, unmatchedPeriod)) {
     return NextResponse.json(
       { error: `${unmatchedPeriod} is closed for editing. Reopen it under Month-End Close first.` },
       { status: 423 }
@@ -127,12 +134,12 @@ export async function POST(
       );
     }
 
-    const glEntry = await prisma.gLEntry.findUnique({ where: { id: glEntryId } });
+    const glEntry = await prisma.gLEntry.findFirst({ where: { id: glEntryId, companyId } });
     if (!glEntry) {
       return NextResponse.json({ error: "GL entry not found" }, { status: 404 });
     }
 
-    const alreadyMatched = await prisma.match.findFirst({ where: { glEntryId } });
+    const alreadyMatched = await prisma.match.findFirst({ where: { glEntryId, companyId } });
     if (alreadyMatched) {
       return NextResponse.json(
         { error: "That GL entry is already matched to another transaction" },
@@ -141,6 +148,7 @@ export async function POST(
     }
 
     const { flags: policyFlags, blocked } = await checkPolicyFlags(
+      companyId,
       glEntry.fundId,
       glEntry.accountCode,
       glEntry.amountCents
@@ -152,6 +160,7 @@ export async function POST(
           entityId: bankTransaction.id,
           action: "policy_blocked_approval",
           afterState: { glEntryId, flags: policyFlags },
+          companyId,
         },
       });
       return NextResponse.json(
@@ -174,6 +183,7 @@ export async function POST(
         reviewReason: reason || null,
         reviewedByUserId: null,
         reviewedAt: new Date(),
+        companyId,
       },
     });
 
@@ -191,6 +201,7 @@ export async function POST(
           reason: reason || undefined,
           ...(policyFlags.length > 0 ? { policyFlags } : {}),
         },
+        companyId,
       },
     });
 
@@ -206,6 +217,7 @@ export async function POST(
       reviewReason: reason || null,
       reviewedByUserId: null,
       reviewedAt: new Date(),
+      companyId,
     },
   });
 
@@ -221,6 +233,7 @@ export async function POST(
         bankTransactionId: bankTransaction.id,
         reason: reason || undefined,
       },
+      companyId,
     },
   });
 

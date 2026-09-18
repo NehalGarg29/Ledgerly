@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
-import { getRoleFromRequest } from "../../../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../../../lib/getRoleFromRequest";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const role = getRoleFromRequest(request);
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot review positive pay exceptions" }, { status: 403 });
+  }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const { id } = await params;
@@ -16,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 
-  const existing = await prisma.positivePayException.findUnique({ where: { id } });
+  const existing = await prisma.positivePayException.findFirst({ where: { id, companyId } });
   if (!existing) {
     return NextResponse.json({ error: "Exception not found" }, { status: 404 });
   }
@@ -49,6 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       action: action === "pay" ? "positive_pay_paid" : "positive_pay_returned",
       beforeState: { status: existing.status },
       afterState: { status: updated.status, reason: reason || undefined },
+      companyId,
     },
   });
 

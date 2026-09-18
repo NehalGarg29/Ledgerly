@@ -7,9 +7,12 @@ import AuthBrandPanel from "../../components/AuthBrandPanel";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"new" | "join">("new");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,13 +29,23 @@ export default function RegisterPage() {
       setError("Password must be at least 8 characters");
       return;
     }
+    if (mode === "join" && !inviteCode.trim()) {
+      setError("Enter the invite code your admin shared with you");
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          ...(mode === "join"
+            ? { inviteCode }
+            : { companyName: companyName.trim() || undefined }),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Registration failed");
@@ -61,10 +74,60 @@ export default function RegisterPage() {
 
           <h2 className="text-4xl font-semibold tracking-tight text-zinc-900">Create account</h2>
           <p className="mt-2 text-sm text-zinc-500">
-            New accounts start with viewer access. An admin can promote you later.
+            {mode === "new"
+              ? "You'll be the admin of a brand-new, empty Ledgerly workspace."
+              : "Join an existing workspace using the invite code your admin shared with you. New members start with viewer access."}
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+          <div className="mt-4 flex gap-1 rounded-full bg-zinc-100 p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setMode("new")}
+              className={`flex-1 rounded-full px-3 py-1.5 font-medium transition-colors ${
+                mode === "new" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+              }`}
+            >
+              New company
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("join")}
+              className={`flex-1 rounded-full px-3 py-1.5 font-medium transition-colors ${
+                mode === "join" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+              }`}
+            >
+              Join with invite code
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            {mode === "new" ? (
+              <div>
+                <label className="block text-sm font-medium text-zinc-900">
+                  Company name <span className="font-normal text-zinc-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Acme Treasury"
+                  className="mt-1.5 w-full rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-zinc-900">Invite code</label>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. A1B2C3D4"
+                  required
+                  className="mt-1.5 w-full rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm uppercase tracking-wider focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600"
+                />
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-zinc-900">Email</label>
               <div className="relative mt-1.5">

@@ -38,21 +38,23 @@ export type AuditLogRow = {
 };
 
 export async function getAuditLog({
+  companyId,
   skip = 0,
   take = 50,
-}: { skip?: number; take?: number } = {}): Promise<{ rows: AuditLogRow[]; totalCount: number }> {
+}: { companyId: string; skip?: number; take?: number }): Promise<{ rows: AuditLogRow[]; totalCount: number }> {
   const [entries, totalCount] = await Promise.all([
     prisma.auditLogEntry.findMany({
+      where: { companyId },
       orderBy: { timestamp: "desc" },
       skip,
       take,
     }),
-    prisma.auditLogEntry.count(),
+    prisma.auditLogEntry.count({ where: { companyId } }),
   ]);
 
   const matchIds = entries.filter((e) => e.entityType === "Match").map((e) => e.entityId);
   const matches = await prisma.match.findMany({
-    where: { id: { in: matchIds } },
+    where: { id: { in: matchIds }, companyId },
     include: { bankTransaction: true, glEntry: true },
   });
   const matchMap = new Map(matches.map((m) => [m.id, m]));
@@ -142,22 +144,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   AnomalyFlag: "Anomalies",
 };
 
-export async function getAuditLogSummary() {
+export async function getAuditLogSummary(companyId: string) {
   const [totalCount, last24hCount, byEntity] = await Promise.all([
-    prisma.auditLogEntry.count(),
+    prisma.auditLogEntry.count({ where: { companyId } }),
     prisma.auditLogEntry.count({
-      where: { timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      where: { companyId, timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
     }),
     prisma.auditLogEntry.groupBy({
       by: ["entityType"],
+      where: { companyId },
       _count: { _all: true },
     }),
   ]);
 
   const distinctActions = new Set(
-    (await prisma.auditLogEntry.findMany({ select: { action: true }, distinct: ["action"] })).map(
-      (e) => e.action
-    )
+    (
+      await prisma.auditLogEntry.findMany({
+        where: { companyId },
+        select: { action: true },
+        distinct: ["action"],
+      })
+    ).map((e) => e.action)
   ).size;
 
   const byCategory = new Map<string, number>();

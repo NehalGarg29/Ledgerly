@@ -7,5 +7,7 @@ export async function GET(request: NextRequest) {
   if (!payload) {
     return NextResponse.json({ user: null });
   }
-  return NextResponse.json({ user: { email: payload.email, role: payload.role } });
+  return NextResponse.json({
+    user: { email: payload.email, role: payload.role, companyId: payload.companyId },
+  });
 }

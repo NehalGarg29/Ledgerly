@@ -4,6 +4,7 @@ import { Pagination } from "../../components/Pagination";
 import StatCard, { StatCardGrid } from "../../components/StatCard";
 import { AuditLogBreakdownChart } from "../../components/AuditLogBreakdownChart";
 import { ListIcon, ClockIcon, HashIcon } from "../../components/icons";
+import { getServerSession } from "../../lib/getServerSession";
 
 export const dynamic = "force-dynamic";
 
@@ -42,15 +43,19 @@ export default async function AuditLogPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
+  const session = await getServerSession();
+  if (!session) return null;
+
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
   const [{ rows, totalCount }, summary] = await Promise.all([
     getAuditLog({
+      companyId: session.companyId,
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    getAuditLogSummary(),
+    getAuditLogSummary(session.companyId),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 

@@ -102,11 +102,11 @@ type ToolCallLog = {
   result: unknown;
 };
 
-export async function runAgentOnTransaction(bankTransactionId: string) {
-  const txn = await prisma.bankTransaction.findUnique({ where: { id: bankTransactionId } });
+export async function runAgentOnTransaction(companyId: string, bankTransactionId: string) {
+  const txn = await prisma.bankTransaction.findFirst({ where: { id: bankTransactionId, companyId } });
   if (!txn) throw new Error("Transaction not found");
 
-  const existingMatch = await prisma.match.findFirst({ where: { bankTransactionId } });
+  const existingMatch = await prisma.match.findFirst({ where: { bankTransactionId, companyId } });
   if (existingMatch) throw new Error("Transaction already has a match — nothing for the agent to investigate");
 
   const toolCallLog: ToolCallLog[] = [];
@@ -162,16 +162,16 @@ Find the most likely GL entry, or escalate if you can't find one with real evide
 
       try {
         if (block.name === "search_gl_entries") {
-          result = await searchGlEntries(block.input as Parameters<typeof searchGlEntries>[0]);
+          result = await searchGlEntries(companyId, block.input as Parameters<typeof searchGlEntries>[1]);
         } else if (block.name === "get_transaction_history") {
           const args = block.input as { vendorPattern: string };
-          result = await getTransactionHistory(args.vendorPattern);
+          result = await getTransactionHistory(companyId, args.vendorPattern);
         } else if (block.name === "check_policy_flags") {
           const args = block.input as { fundId: string; accountCode?: string; amountCents?: number };
-          result = await checkPolicyFlags(args.fundId, args.accountCode, args.amountCents);
+          result = await checkPolicyFlags(companyId, args.fundId, args.accountCode, args.amountCents);
         } else if (block.name === "propose_match") {
           const args = block.input as { glEntryId: string; confidence: number; reasoning: string };
-          result = await proposeMatch(txn.id, args.glEntryId, args.confidence, args.reasoning);
+          result = await proposeMatch(companyId, txn.id, args.glEntryId, args.confidence, args.reasoning);
           finalAction = "propose_match";
           finalReasoning = args.reasoning;
           proposedGlEntryId = args.glEntryId;
@@ -227,6 +227,7 @@ Find the most likely GL entry, or escalate if you can't find one with real evide
       proposedGlEntryId,
       proposedConfidence,
       matchId,
+      companyId,
     },
   });
 

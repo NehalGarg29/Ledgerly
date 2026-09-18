@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { getRoleFromRequest } from "../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../lib/getRoleFromRequest";
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const role = getRoleFromRequest(request);
   if (role !== "admin") {
     return NextResponse.json({ error: "Only admins can edit funds." }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { id } = await params;
-  const existing = await prisma.fund.findUnique({ where: { id } });
+  const existing = await prisma.fund.findFirst({ where: { id, companyId } });
   if (!existing) {
     return NextResponse.json({ error: "Fund not found." }, { status: 404 });
   }
@@ -28,7 +32,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } else if (parentCode === existing.code) {
       return NextResponse.json({ error: "A fund can't be its own parent." }, { status: 400 });
     } else {
-      const parent = await prisma.fund.findUnique({ where: { code: parentCode } });
+      const parent = await prisma.fund.findFirst({ where: { companyId, code: parentCode } });
       if (!parent) {
         return NextResponse.json({ error: `Parent fund "${parentCode}" not found.` }, { status: 400 });
       }
@@ -56,6 +60,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         isActive: existing.isActive,
       },
       afterState: { name: fund.name, parentFundId: fund.parentFundId, isActive: fund.isActive },
+      companyId,
     },
   });
 

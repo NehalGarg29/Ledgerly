@@ -1,13 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
+import { getCompanyIdFromRequest } from "../../../../../lib/getRoleFromRequest";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { id } = await params;
 
-  const transaction = await prisma.bankTransaction.findUnique({ where: { id } });
+  const transaction = await prisma.bankTransaction.findFirst({ where: { id, companyId } });
   if (!transaction) {
     return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
   }
@@ -25,6 +31,7 @@ export async function GET(
 
   const candidates = await prisma.gLEntry.findMany({
     where: {
+      companyId,
       matches: { none: {} },
       amountCents: {
         gte: transaction.amountCents - amountTolerance,

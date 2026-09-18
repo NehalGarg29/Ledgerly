@@ -1,13 +1,13 @@
 import { prisma } from "./prisma";
 
-export async function getAnalyticsStats() {
+export async function getAnalyticsStats(companyId: string) {
   const [autoApproved, pendingReview, approved, rejected, unmatchedTxns] =
     await Promise.all([
-      prisma.match.count({ where: { status: "auto_approved" } }),
-      prisma.match.count({ where: { status: "pending_review" } }),
-      prisma.match.count({ where: { status: "approved" } }),
-      prisma.match.count({ where: { status: "rejected" } }),
-      prisma.bankTransaction.count({ where: { matches: { none: {} } } }),
+      prisma.match.count({ where: { companyId, status: "auto_approved" } }),
+      prisma.match.count({ where: { companyId, status: "pending_review" } }),
+      prisma.match.count({ where: { companyId, status: "approved" } }),
+      prisma.match.count({ where: { companyId, status: "rejected" } }),
+      prisma.bankTransaction.count({ where: { companyId, matches: { none: {} } } }),
     ]);
 
   const statusBreakdown = [
@@ -20,10 +20,10 @@ export async function getAnalyticsStats() {
 
   const [humanApprovedFuzzy, humanRejectedFuzzy] = await Promise.all([
     prisma.match.count({
-      where: { status: "approved", matchType: { in: ["fuzzy", "ai_suggested"] } },
+      where: { companyId, status: "approved", matchType: { in: ["fuzzy", "ai_suggested"] } },
     }),
     prisma.match.count({
-      where: { status: "rejected", matchType: { in: ["fuzzy", "ai_suggested"] } },
+      where: { companyId, status: "rejected", matchType: { in: ["fuzzy", "ai_suggested"] } },
     }),
   ]);
 

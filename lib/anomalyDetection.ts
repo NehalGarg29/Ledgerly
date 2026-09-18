@@ -27,10 +27,13 @@ export type AnomalyScanResult = { flagged: number; skipped: number };
 // behind it, same philosophy as the fuzzy-match confidence breakdown
 // elsewhere in this app. Safe to call repeatedly: only ever creates flags
 // for (transaction, anomalyType) pairs that don't already have one.
-export async function detectAnomalies(): Promise<AnomalyScanResult> {
+export async function detectAnomalies(companyId: string): Promise<AnomalyScanResult> {
   const [transactions, existingFlags] = await Promise.all([
-    prisma.bankTransaction.findMany({ orderBy: { date: "asc" } }),
-    prisma.anomalyFlag.findMany({ select: { bankTransactionId: true, anomalyType: true } }),
+    prisma.bankTransaction.findMany({ where: { companyId }, orderBy: { date: "asc" } }),
+    prisma.anomalyFlag.findMany({
+      where: { companyId },
+      select: { bankTransactionId: true, anomalyType: true },
+    }),
   ]);
 
   const alreadyFlagged = new Set(existingFlags.map((f) => `${f.bankTransactionId}:${f.anomalyType}`));
@@ -120,7 +123,10 @@ export async function detectAnomalies(): Promise<AnomalyScanResult> {
     return { flagged: 0, skipped: transactions.length };
   }
 
-  await prisma.anomalyFlag.createMany({ data: toCreate, skipDuplicates: true });
+  await prisma.anomalyFlag.createMany({
+    data: toCreate.map((f) => ({ ...f, companyId })),
+    skipDuplicates: true,
+  });
 
   await prisma.auditLogEntry.createMany({
     data: toCreate.map((f) => ({
@@ -128,6 +134,7 @@ export async function detectAnomalies(): Promise<AnomalyScanResult> {
       entityId: f.bankTransactionId,
       action: "anomaly_flagged",
       afterState: { anomalyType: f.anomalyType, severity: f.severity, explanation: f.explanation },
+      companyId,
     })),
   });
 

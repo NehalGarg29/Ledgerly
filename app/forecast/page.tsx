@@ -1,11 +1,15 @@
 import { getCashForecast } from "../../lib/cashForecast";
 import { formatCents } from "../../lib/format";
 import CashForecastChart from "../../components/CashForecastChart";
+import { getServerSession } from "../../lib/getServerSession";
 
 export const dynamic = "force-dynamic";
 
 export default async function ForecastPage() {
-  const forecast = await getCashForecast();
+  const session = await getServerSession();
+  if (!session) return null;
+
+  const forecast = await getCashForecast(session.companyId);
   const isGrowing = forecast.avgDailyNetFlowCents >= 0;
 
   return (

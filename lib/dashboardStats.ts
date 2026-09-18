@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 
-export async function getDashboardStats() {
+export async function getDashboardStats(companyId: string) {
   const [
     totalTransactions,
     reconciledCount,
@@ -8,15 +8,16 @@ export async function getDashboardStats() {
     unmatchedTransactions,
     accountTotals,
   ] = await Promise.all([
-    prisma.bankTransaction.count(),
-    prisma.match.count({ where: { status: { in: ["auto_approved", "approved"] } } }),
-    prisma.match.count({ where: { status: "pending_review" } }),
+    prisma.bankTransaction.count({ where: { companyId } }),
+    prisma.match.count({ where: { companyId, status: { in: ["auto_approved", "approved"] } } }),
+    prisma.match.count({ where: { companyId, status: "pending_review" } }),
     prisma.bankTransaction.findMany({
-      where: { matches: { none: {} } },
+      where: { companyId, matches: { none: {} } },
       select: { id: true },
     }),
     prisma.bankTransaction.groupBy({
       by: ["accountId"],
+      where: { companyId },
       _sum: { amountCents: true },
     }),
   ]);

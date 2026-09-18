@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { getDashboardStats } from "../lib/dashboardStats";
 import { getAnalyticsStats } from "../lib/analyticsStats";
 import { AnalyticsCharts } from "../components/AnalyticsCharts";
 import { formatCents } from "../lib/format";
-import { verifySessionToken } from "../lib/session";
+import { getServerSession } from "../lib/getServerSession";
 import Avatar from "../components/Avatar";
 
 // This page reads live data straight from Postgres on every load. Without
@@ -61,10 +60,11 @@ const LinkIcon = (
 );
 
 export default async function Dashboard() {
-  const stats = await getDashboardStats();
-  const analytics = await getAnalyticsStats();
-  const cookieStore = await cookies();
-  const session = verifySessionToken(cookieStore.get("session")?.value);
+  const session = await getServerSession();
+  if (!session) return null; // middleware redirects unauthenticated page loads to /login
+
+  const stats = await getDashboardStats(session.companyId);
+  const analytics = await getAnalyticsStats(session.companyId);
   const reconciliationPct = stats.reconciliationRate * 100;
   const isFullyReconciled = stats.pendingExceptionsCount === 0;
 

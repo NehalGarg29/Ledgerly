@@ -4,18 +4,18 @@ export function periodFromDate(dateStr: string): string {
   return dateStr.slice(0, 7); // "YYYY-MM"
 }
 
-export async function getClosedPeriodsAmong(periods: string[]): Promise<string[]> {
+export async function getClosedPeriodsAmong(companyId: string, periods: string[]): Promise<string[]> {
   const distinct = Array.from(new Set(periods));
   if (distinct.length === 0) return [];
   const rows = await prisma.closePeriod.findMany({
-    where: { period: { in: distinct }, status: "closed" },
+    where: { companyId, period: { in: distinct }, status: "closed" },
     select: { period: true },
   });
   return rows.map((r) => r.period);
 }
 
-export async function isPeriodClosed(period: string): Promise<boolean> {
-  const cp = await prisma.closePeriod.findUnique({ where: { period } });
+export async function isPeriodClosed(companyId: string, period: string): Promise<boolean> {
+  const cp = await prisma.closePeriod.findFirst({ where: { companyId, period } });
   return cp?.status === "closed";
 }
 
@@ -29,14 +29,14 @@ export type PeriodChecklist = {
   closedByEmail: string | null;
 };
 
-export async function getPeriodChecklist(period: string): Promise<PeriodChecklist> {
+export async function getPeriodChecklist(companyId: string, period: string): Promise<PeriodChecklist> {
   const [closePeriod, pendingCount, unmatchedCount] = await Promise.all([
-    prisma.closePeriod.findUnique({ where: { period }, include: { closedBy: true } }),
+    prisma.closePeriod.findFirst({ where: { companyId, period }, include: { closedBy: true } }),
     prisma.match.count({
-      where: { status: "pending_review", bankTransaction: { date: { startsWith: period } } },
+      where: { companyId, status: "pending_review", bankTransaction: { date: { startsWith: period } } },
     }),
     prisma.bankTransaction.count({
-      where: { date: { startsWith: period }, matches: { none: {} } },
+      where: { companyId, date: { startsWith: period }, matches: { none: {} } },
     }),
   ]);
 
@@ -51,10 +51,10 @@ export async function getPeriodChecklist(period: string): Promise<PeriodChecklis
   };
 }
 
-export async function listRecentPeriods(limit = 12): Promise<string[]> {
+export async function listRecentPeriods(companyId: string, limit = 12): Promise<string[]> {
   const [bankDates, glDates] = await Promise.all([
-    prisma.bankTransaction.findMany({ select: { date: true }, distinct: ["date"] }),
-    prisma.gLEntry.findMany({ select: { date: true }, distinct: ["date"] }),
+    prisma.bankTransaction.findMany({ where: { companyId }, select: { date: true }, distinct: ["date"] }),
+    prisma.gLEntry.findMany({ where: { companyId }, select: { date: true }, distinct: ["date"] }),
   ]);
 
   const periods = new Set<string>();

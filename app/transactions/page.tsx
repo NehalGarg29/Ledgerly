@@ -6,6 +6,7 @@ import { Pagination } from "../../components/Pagination";
 import StatCard, { StatCardGrid } from "../../components/StatCard";
 import { ListIcon, ArrowUpCircleIcon, ArrowDownCircleIcon, CheckCircleIcon } from "../../components/icons";
 import { formatCents } from "../../lib/format";
+import { getServerSession } from "../../lib/getServerSession";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +17,20 @@ export default async function TransactionsPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string }>;
 }) {
+  const session = await getServerSession();
+  if (!session) return null;
+
   const { status, page: pageParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
   const [{ transactions, totalCount }, summary] = await Promise.all([
     getAllTransactions({
+      companyId: session.companyId,
       status,
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    getTransactionsSummary(),
+    getTransactionsSummary(session.companyId),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));

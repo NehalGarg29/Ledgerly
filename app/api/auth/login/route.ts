@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     userId: user.id,
     email: user.email,
     role: user.role as "admin" | "analyst" | "viewer",
+    companyId: user.companyId,
     exp: Date.now() + SESSION_DURATION_MS,
   });
 

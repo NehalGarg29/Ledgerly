@@ -1,18 +1,18 @@
-import { cookies } from "next/headers";
 import { getFundTree, getAccountTree } from "../../lib/chartOfAccounts";
-import { verifySessionToken } from "../../lib/session";
+import { getServerSession } from "../../lib/getServerSession";
 import ChartOfAccountsView from "../../components/ChartOfAccountsView";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
-  const [funds, accounts, cookieStore] = await Promise.all([
-    getFundTree(),
-    getAccountTree(),
-    cookies(),
+  const session = await getServerSession();
+  if (!session) return null;
+
+  const [funds, accounts] = await Promise.all([
+    getFundTree(session.companyId),
+    getAccountTree(session.companyId),
   ]);
-  const session = verifySessionToken(cookieStore.get("session")?.value);
-  const isAdmin = session?.role === "admin";
+  const isAdmin = session.role === "admin";
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8">

@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { PrismaClient } from "../lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { generateInviteCode } from "../lib/inviteCode";
 
 config({ path: ".env.local" });
 
@@ -9,6 +10,18 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // Everything below lives inside one shared "Demo Company" — this script is
+  // meant to set up (or reset) the demo/dev workspace, not touch any other
+  // company that might exist in the same database.
+  let company = await prisma.company.findFirst({ where: { name: "Demo Company" } });
+  if (!company) {
+    company = await prisma.company.create({
+      data: { name: "Demo Company", inviteCode: generateInviteCode() },
+    });
+    console.log(`Created Demo Company (invite code: ${company.inviteCode}).`);
+  }
+  const companyId = company.id;
+
   // Only seed the demo GL entries on a database that doesn't have real data
   // yet. This used to unconditionally wipe every GL entry on every run,
   // which — combined with the Match.glEntryId foreign key's default
@@ -16,7 +29,7 @@ async function main() {
   // created since the last seed, leaving zombie pending-review matches with
   // no candidate GL entry. Re-running seed.ts (e.g. after a schema change)
   // should never destroy live reconciliation data.
-  const existingGlCount = await prisma.gLEntry.count();
+  const existingGlCount = await prisma.gLEntry.count({ where: { companyId } });
   if (existingGlCount === 0) {
     await prisma.gLEntry.createMany({
       data: [
@@ -31,7 +44,7 @@ async function main() {
         { fundId: "200", accountCode: "200-4300", amountCents: 100000, date: "2026-08-22", description: "Interest income" },
         { fundId: "100", accountCode: "100-4600", amountCents: 180000, date: "2026-08-17", description: "Vendor refund" },
         { fundId: "400", accountCode: "400-6100", amountCents: -12500, date: "2026-08-24", description: "Bank fee" },
-      ],
+      ].map((entry) => ({ ...entry, companyId })),
     });
     console.log("Seeded GL entries.");
   } else {
@@ -48,7 +61,7 @@ async function main() {
   for (const u of demoUsers) {
     await prisma.user.upsert({
       where: { email: u.email },
-      create: { email: u.email, passwordHash, role: u.role },
+      create: { email: u.email, passwordHash, role: u.role, companyId },
       update: { passwordHash, role: u.role },
     });
   }
@@ -63,8 +76,8 @@ async function main() {
 
   for (const f of funds) {
     await prisma.fund.upsert({
-      where: { code: f.code },
-      create: { code: f.code, name: f.name },
+      where: { companyId_code: { companyId, code: f.code } },
+      create: { code: f.code, name: f.name, companyId },
       update: { name: f.name },
     });
   }
@@ -81,8 +94,8 @@ async function main() {
 
   for (const c of categories) {
     await prisma.account.upsert({
-      where: { code: c.code },
-      create: { code: c.code, name: c.name, type: c.type },
+      where: { companyId_code: { companyId, code: c.code } },
+      create: { code: c.code, name: c.name, type: c.type, companyId },
       update: { name: c.name, type: c.type },
     });
   }
@@ -101,10 +114,10 @@ async function main() {
   ];
 
   for (const a of accounts) {
-    const parent = await prisma.account.findUnique({ where: { code: a.parentCode } });
+    const parent = await prisma.account.findFirst({ where: { companyId, code: a.parentCode } });
     await prisma.account.upsert({
-      where: { code: a.code },
-      create: { code: a.code, name: a.name, type: a.type, parentAccountId: parent?.id },
+      where: { companyId_code: { companyId, code: a.code } },
+      create: { code: a.code, name: a.name, type: a.type, parentAccountId: parent?.id, companyId },
       update: { name: a.name, type: a.type, parentAccountId: parent?.id },
     });
   }

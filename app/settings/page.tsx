@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRole } from "../../lib/useRole";
 import PolicyRulesPanel from "../../components/PolicyRulesPanel";
+import CompanyInviteCard from "../../components/CompanyInviteCard";
 
 export default function SettingsPage() {
   const role = useRole();
@@ -17,12 +18,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch("/api/settings/match-thresholds")
-      .then((r) => r.json())
-      .then((d) => {
-        setAutoApprove(String(Math.round(d.settings.autoApproveThreshold * 100)));
-        setSuggest(String(Math.round(d.settings.suggestThreshold * 100)));
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (ok && d.settings) {
+          setAutoApprove(String(Math.round(d.settings.autoApproveThreshold * 100)));
+          setSuggest(String(Math.round(d.settings.suggestThreshold * 100)));
+        }
         setLoaded(true);
-      });
+      })
+      .catch(() => setLoaded(true));
   }, []);
 
   async function handleSave() {
@@ -108,6 +112,7 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {isAdmin && <CompanyInviteCard />}
       {isAdmin && <PolicyRulesPanel />}
     </main>
   );

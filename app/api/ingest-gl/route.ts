@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "../../../lib/prisma";
-import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../lib/getRoleFromRequest";
 import { parseGlCsvString } from "../../../lib/adapters/glAdapter";
 import { runExactMatchPass, runFuzzyMatchPass } from "../../../lib/matchEngine";
 import { periodFromDate, getClosedPeriodsAmong } from "../../../lib/closePeriod";
@@ -40,8 +40,12 @@ export async function POST(request: NextRequest) {
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot create GL entries" }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
-  const existingBatch = await prisma.uploadBatch.findUnique({ where: { contentHash } });
+  const existingBatch = await prisma.uploadBatch.findFirst({ where: { companyId, contentHash } });
   if (existingBatch) {
     return NextResponse.json(
       {
@@ -51,7 +55,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const closedPeriods = await getClosedPeriodsAmong(parsed.map((entry) => periodFromDate(entry.date)));
+  const closedPeriods = await getClosedPeriodsAmong(companyId, parsed.map((entry) => periodFromDate(entry.date)));
   if (closedPeriods.length > 0) {
     return NextResponse.json(
       {
@@ -68,6 +72,7 @@ export async function POST(request: NextRequest) {
         filename: file.name,
         contentHash,
         rowCount: parsed.length,
+        companyId,
       },
     });
 
@@ -79,12 +84,13 @@ export async function POST(request: NextRequest) {
         date: entry.date,
         description: entry.description,
         uploadBatchId: batch.id,
+        companyId,
       })),
     });
   });
 
-  const exactMatches = await runExactMatchPass();
-  const fuzzyMatches = await runFuzzyMatchPass();
+  const exactMatches = await runExactMatchPass(companyId);
+  const fuzzyMatches = await runFuzzyMatchPass(companyId);
 
   return NextResponse.json({
     ingested: parsed.length,

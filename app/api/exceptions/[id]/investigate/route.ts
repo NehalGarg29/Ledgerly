@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRoleFromRequest } from "../../../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../../../lib/getRoleFromRequest";
 import { runAgentOnTransaction } from "../../../../../lib/agent/runAgent";
 
 export async function POST(
@@ -10,11 +10,15 @@ export async function POST(
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot trigger agent investigation" }, { status: 403 });
   }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { id } = await params;
 
   try {
-    const trace = await runAgentOnTransaction(id);
+    const trace = await runAgentOnTransaction(companyId, id);
     return NextResponse.json({ trace });
   } catch (err) {
     return NextResponse.json(

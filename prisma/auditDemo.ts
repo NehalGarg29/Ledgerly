@@ -29,9 +29,22 @@ async function getStateAtTime(entityType: string, entityId: string, asOf: Date) 
 async function main() {
   const entityId = "demo-match-1";
 
+  // Same "find or create Demo Company" pattern as seed.ts/backfillCompany.ts —
+  // this is a manual demo/dev script, not something the app calls, so it
+  // always operates against the shared Demo Company rather than any real
+  // tenant.
+  let company = await prisma.company.findFirst({ where: { name: "Demo Company" } });
+  if (!company) {
+    company = await prisma.company.create({
+      data: { name: "Demo Company", inviteCode: Math.random().toString(36).slice(2, 10).toUpperCase() },
+    });
+  }
+  const companyId = company.id;
+
   await prisma.auditLogEntry.createMany({
     data: [
       {
+        companyId,
         entityType: "Match",
         entityId,
         action: "created",
@@ -39,6 +52,7 @@ async function main() {
         timestamp: new Date("2026-08-20T10:00:00Z"),
       },
       {
+        companyId,
         entityType: "Match",
         entityId,
         action: "reviewed",

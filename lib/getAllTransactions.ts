@@ -9,22 +9,25 @@ type StatusFilter =
   | "unmatched";
 
 export async function getAllTransactions({
+  companyId,
   status,
   skip = 0,
   take,
 }: {
+  companyId: string;
   status?: string;
   skip?: number;
   take?: number;
-} = {}) {
+}) {
   const normalizedStatus = (status as StatusFilter) || "all";
 
   const where =
     normalizedStatus === "all"
-      ? {}
+      ? { companyId }
       : normalizedStatus === "unmatched"
-        ? { matches: { none: {} } }
+        ? { companyId, matches: { none: {} } }
         : {
+            companyId,
             matches: {
               some: {
                 status: normalizedStatus as "auto_approved" | "pending_review" | "approved" | "rejected",
@@ -76,17 +79,17 @@ export async function getAllTransactions({
   return { transactions, totalCount };
 }
 
-export async function getTransactionsSummary() {
+export async function getTransactionsSummary(companyId: string) {
   const [totalCount, reconciledCount, inflow, outflow] = await Promise.all([
-    prisma.bankTransaction.count(),
-    prisma.match.count({ where: { status: { in: ["auto_approved", "approved"] } } }),
+    prisma.bankTransaction.count({ where: { companyId } }),
+    prisma.match.count({ where: { companyId, status: { in: ["auto_approved", "approved"] } } }),
     prisma.bankTransaction.aggregate({
       _sum: { amountCents: true },
-      where: { amountCents: { gt: 0 } },
+      where: { companyId, amountCents: { gt: 0 } },
     }),
     prisma.bankTransaction.aggregate({
       _sum: { amountCents: true },
-      where: { amountCents: { lt: 0 } },
+      where: { companyId, amountCents: { lt: 0 } },
     }),
   ]);
 

@@ -15,16 +15,19 @@ export type PolicyCheckResult = {
 };
 
 export async function checkPolicyFlags(
+  companyId: string,
   fundCode: string,
   accountCode?: string,
   amountCents?: number
 ): Promise<PolicyCheckResult> {
   const [rules, fund, account] = await Promise.all([
     prisma.policyRule.findMany({
-      where: { isActive: true, OR: [{ fundCode: null }, { fundCode }] },
+      where: { companyId, isActive: true, OR: [{ fundCode: null }, { fundCode }] },
     }),
-    prisma.fund.findUnique({ where: { code: fundCode } }),
-    accountCode ? prisma.account.findUnique({ where: { code: accountCode } }) : Promise.resolve(null),
+    prisma.fund.findFirst({ where: { companyId, code: fundCode } }),
+    accountCode
+      ? prisma.account.findFirst({ where: { companyId, code: accountCode } })
+      : Promise.resolve(null),
   ]);
 
   const flags: PolicyFlag[] = [];

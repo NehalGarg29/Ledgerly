@@ -18,12 +18,12 @@ export function calculateConfidence(bankAmountCents: number, glAmountCents: numb
   return Math.round(confidence * 100) / 100;
 }
 
-export async function runExactMatchPass(): Promise<number> {
+export async function runExactMatchPass(companyId: string): Promise<number> {
   const unmatchedBankTxns = await prisma.bankTransaction.findMany({
-    where: { matches: { none: {} } },
+    where: { companyId, matches: { none: {} } },
   });
   const unmatchedGLEntries = await prisma.gLEntry.findMany({
-    where: { matches: { none: {} } },
+    where: { companyId, matches: { none: {} } },
   });
 
   const usedGLEntryIds = new Set<string>();
@@ -45,6 +45,7 @@ export async function runExactMatchPass(): Promise<number> {
           matchType: "exact",
           confidenceScore: 1.0,
           status: "auto_approved",
+          companyId,
         },
       });
 
@@ -59,6 +60,7 @@ export async function runExactMatchPass(): Promise<number> {
             bankTransactionId: txn.id,
             glEntryId: candidate.id,
           },
+          companyId,
         },
       });
 
@@ -70,17 +72,17 @@ export async function runExactMatchPass(): Promise<number> {
   return matchCount;
 }
 
-export async function runFuzzyMatchPass(): Promise<number> {
+export async function runFuzzyMatchPass(companyId: string): Promise<number> {
   const unmatchedBankTxns = await prisma.bankTransaction.findMany({
-    where: { matches: { none: {} } },
+    where: { companyId, matches: { none: {} } },
   });
   const unmatchedGLEntries = await prisma.gLEntry.findMany({
-    where: { matches: { none: {} } },
+    where: { companyId, matches: { none: {} } },
   });
 
   const usedGLEntryIds = new Set<string>();
   const { autoApproveThreshold: AUTO_APPROVE_THRESHOLD, suggestThreshold: SUGGEST_THRESHOLD } =
-    await getMatchSettings();
+    await getMatchSettings(companyId);
   let matchCount = 0;
 
   for (const txn of unmatchedBankTxns) {
@@ -110,6 +112,7 @@ export async function runFuzzyMatchPass(): Promise<number> {
           matchType: "fuzzy",
           confidenceScore: bestConfidence,
           status,
+          companyId,
         },
       });
 
@@ -125,6 +128,7 @@ export async function runFuzzyMatchPass(): Promise<number> {
             bankTransactionId: txn.id,
             glEntryId: bestCandidate.id,
           },
+          companyId,
         },
       });
 

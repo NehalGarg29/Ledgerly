@@ -69,23 +69,23 @@ function drawTable(doc: PdfDoc, headers: string[], widths: number[], rows: strin
   }
 }
 
-export async function buildEvidencePackPdf(period: string): Promise<Buffer> {
+export async function buildEvidencePackPdf(companyId: string, period: string): Promise<Buffer> {
   const { start, end } = periodBounds(period);
 
   const [closePeriod, matches, auditEntries, glEntryCount, policyRules] = await Promise.all([
-    prisma.closePeriod.findUnique({ where: { period }, include: { closedBy: true } }),
+    prisma.closePeriod.findFirst({ where: { companyId, period }, include: { closedBy: true } }),
     prisma.match.findMany({
-      where: { bankTransaction: { date: { startsWith: period } } },
+      where: { companyId, bankTransaction: { date: { startsWith: period } } },
       include: { bankTransaction: true, glEntry: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.auditLogEntry.findMany({
-      where: { timestamp: { gte: start, lt: end } },
+      where: { companyId, timestamp: { gte: start, lt: end } },
       include: { actor: true },
       orderBy: { timestamp: "asc" },
     }),
-    prisma.gLEntry.count({ where: { date: { startsWith: period } } }),
-    prisma.policyRule.findMany({ where: { isActive: true }, orderBy: { createdAt: "asc" } }),
+    prisma.gLEntry.count({ where: { companyId, date: { startsWith: period } } }),
+    prisma.policyRule.findMany({ where: { companyId, isActive: true }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const resolvedCount = matches.filter((m) => m.status === "approved" || m.status === "auto_approved").length;

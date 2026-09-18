@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
-import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../lib/getRoleFromRequest";
 
 const RULE_TYPES = ["max_amount", "inactive_fund_or_account", "restricted_account_type"] as const;
 const SEVERITIES = ["block", "warn"] as const;
 const ACCOUNT_TYPES = ["asset", "liability", "equity", "revenue", "expense"] as const;
 
-export async function GET() {
-  const rules = await prisma.policyRule.findMany({ orderBy: { createdAt: "desc" } });
+export async function GET(request: NextRequest) {
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const rules = await prisma.policyRule.findMany({ where: { companyId }, orderBy: { createdAt: "desc" } });
   return NextResponse.json({ rules });
 }
 
@@ -15,6 +19,10 @@ export async function POST(request: NextRequest) {
   const role = getRoleFromRequest(request);
   if (role !== "admin") {
     return NextResponse.json({ error: "Only admins can add policy rules." }, { status: 403 });
+  }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const body = await request.json();
@@ -60,7 +68,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (fundCode) {
-    const fund = await prisma.fund.findUnique({ where: { code: fundCode } });
+    const fund = await prisma.fund.findFirst({ where: { companyId, code: fundCode } });
     if (!fund) {
       return NextResponse.json({ error: `Fund "${fundCode}" not found.` }, { status: 400 });
     }
@@ -77,6 +85,7 @@ export async function POST(request: NextRequest) {
         ruleType === "restricted_account_type"
           ? (allowedAccountTypes as (typeof ACCOUNT_TYPES)[number][])
           : [],
+      companyId,
     },
   });
 
@@ -93,6 +102,7 @@ export async function POST(request: NextRequest) {
         thresholdCents: rule.thresholdCents,
         allowedAccountTypes: rule.allowedAccountTypes,
       },
+      companyId,
     },
   });
 

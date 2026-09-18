@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { Prisma } from "../../../lib/generated/prisma/client";
-import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../lib/getRoleFromRequest";
 
 // Lets a reviewer key in a GL entry that hasn't been ingested from a file
 // yet — e.g. they know from their own books that a posting exists but it
@@ -11,6 +11,10 @@ export async function POST(request: NextRequest) {
   const role = getRoleFromRequest(request);
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot create GL entries" }, { status: 403 });
+  }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const body = await request.json();
@@ -41,6 +45,7 @@ export async function POST(request: NextRequest) {
       date,
       description,
       source: "manual",
+      companyId,
     },
   });
 
@@ -58,6 +63,7 @@ export async function POST(request: NextRequest) {
         date: entry.date,
         description: entry.description,
       },
+      companyId,
     },
   });
 

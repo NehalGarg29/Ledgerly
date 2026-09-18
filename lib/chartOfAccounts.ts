@@ -25,10 +25,10 @@ function rollUp<T extends { balanceCents: number; children: T[] }>(node: T): num
   return node.balanceCents;
 }
 
-export async function getFundTree(): Promise<FundNode[]> {
+export async function getFundTree(companyId: string): Promise<FundNode[]> {
   const [funds, totals] = await Promise.all([
-    prisma.fund.findMany({ orderBy: { code: "asc" } }),
-    prisma.gLEntry.groupBy({ by: ["fundId"], _sum: { amountCents: true } }),
+    prisma.fund.findMany({ where: { companyId }, orderBy: { code: "asc" } }),
+    prisma.gLEntry.groupBy({ by: ["fundId"], where: { companyId }, _sum: { amountCents: true } }),
   ]);
 
   const totalsByCode = new Map(totals.map((t) => [t.fundId, t._sum.amountCents ?? 0]));
@@ -59,10 +59,10 @@ export async function getFundTree(): Promise<FundNode[]> {
   return roots;
 }
 
-export async function getAccountTree(): Promise<AccountNode[]> {
+export async function getAccountTree(companyId: string): Promise<AccountNode[]> {
   const [accounts, totals] = await Promise.all([
-    prisma.account.findMany({ orderBy: { code: "asc" } }),
-    prisma.gLEntry.groupBy({ by: ["accountCode"], _sum: { amountCents: true } }),
+    prisma.account.findMany({ where: { companyId }, orderBy: { code: "asc" } }),
+    prisma.gLEntry.groupBy({ by: ["accountCode"], where: { companyId }, _sum: { amountCents: true } }),
   ]);
 
   const totalsByCode = new Map(totals.map((t) => [t.accountCode, t._sum.amountCents ?? 0]));

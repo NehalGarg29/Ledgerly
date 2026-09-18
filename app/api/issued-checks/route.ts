@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
-import { getRoleFromRequest } from "../../../lib/getRoleFromRequest";
+import { getRoleFromRequest, getCompanyIdFromRequest } from "../../../lib/getRoleFromRequest";
 
-export async function GET() {
-  const checks = await prisma.issuedCheck.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
+export async function GET(request: NextRequest) {
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const checks = await prisma.issuedCheck.findMany({
+    where: { companyId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
   return NextResponse.json({ checks });
 }
 
@@ -11,6 +19,10 @@ export async function POST(request: NextRequest) {
   const role = getRoleFromRequest(request);
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewers cannot issue checks" }, { status: 403 });
+  }
+  const companyId = getCompanyIdFromRequest(request);
+  if (!companyId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const body = await request.json();
@@ -30,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   const existing = await prisma.issuedCheck.findFirst({
-    where: { accountId, checkNumber, status: { not: "voided" } },
+    where: { companyId, accountId, checkNumber, status: { not: "voided" } },
   });
   if (existing) {
     return NextResponse.json(
@@ -40,7 +52,7 @@ export async function POST(request: NextRequest) {
   }
 
   const check = await prisma.issuedCheck.create({
-    data: { checkNumber, payee, amountCents, issueDate, accountId },
+    data: { checkNumber, payee, amountCents, issueDate, accountId, companyId },
   });
 
   await prisma.auditLogEntry.create({
@@ -49,6 +61,7 @@ export async function POST(request: NextRequest) {
       entityId: check.id,
       action: "check_issued",
       afterState: { checkNumber, payee, amountCents, issueDate, accountId },
+      companyId,
     },
   });
 

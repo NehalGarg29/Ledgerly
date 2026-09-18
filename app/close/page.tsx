@@ -1,16 +1,18 @@
-import { cookies } from "next/headers";
 import { listRecentPeriods, getPeriodChecklist } from "../../lib/closePeriod";
-import { verifySessionToken } from "../../lib/session";
+import { getServerSession } from "../../lib/getServerSession";
 import ClosePeriodsView from "../../components/ClosePeriodsView";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClosePage() {
-  const [periodList, cookieStore] = await Promise.all([listRecentPeriods(), cookies()]);
-  const session = verifySessionToken(cookieStore.get("session")?.value);
-  const canReview = session?.role !== "viewer";
+  const session = await getServerSession();
+  if (!session) return null;
 
-  const periods = await Promise.all(periodList.map((p) => getPeriodChecklist(p)));
+  const canReview = session.role !== "viewer";
+  const periodList = await listRecentPeriods(session.companyId);
+  const periods = await Promise.all(
+    periodList.map((p) => getPeriodChecklist(session.companyId, p))
+  );
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-8">
